@@ -12,6 +12,57 @@ pool:
 variables:
   buildConfiguration: 'Release'
 
-steps:
-- script: dotnet build --configuration $(buildConfiguration)
-  displayName: 'dotnet build $(buildConfiguration)'
+stages:
+# ======================
+#        BUILD
+# ======================
+- stage: Build
+  displayName: "Build Stage"
+  jobs:
+  - job: BuildJob
+    displayName: "Build .NET App"
+    steps:
+    - task: UseDotNet@2
+      displayName: "Install .NET SDK"
+      inputs:
+        packageType: sdk
+        version: 8.x
+
+    - script: dotnet restore
+      displayName: "Restore packages"
+
+    - script: dotnet build --configuration $(buildConfiguration)
+      displayName: "Build project"
+
+    - script: dotnet publish --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)
+      displayName: "Publish output"
+
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish artifacts"
+      inputs:
+        PathtoPublish: "$(Build.ArtifactStagingDirectory)"
+        ArtifactName: "drop"
+
+# ======================
+#        DEPLOY
+# ======================
+- stage: Deploy
+  displayName: "Deploy Stage"
+  dependsOn: Build
+  jobs:
+  - deployment: DeployToWebApp
+    displayName: "Deploy to mywebappkhubaib"
+    environment: "production"
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+            displayName: "Deploy Web App"
+            inputs:
+              azureSubscription: "myserviceconnection"
+              appName: "mywebappkhubaib"
+              package: "$(Pipeline.Workspace)/drop"
